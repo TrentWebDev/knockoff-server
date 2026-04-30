@@ -1,0 +1,152 @@
+require('dotenv').config()
+const express = require('express')
+const cors = require('cors')
+const helmet = require('helmet')
+const { createServer } = require('http')
+const { Server } = require('socket.io')
+const rateLimit = require('express-rate-limit')
+
+const authRoutes = require('./routes/auth')
+const businessRoutes = require('./routes/business')
+const jobRoutes = require('./routes/jobs')
+const invoiceRoutes = require('./routes/invoices')
+const quoteRoutes = require('./routes/quotes')
+const customerRoutes = require('./routes/customers')
+const aiRoutes = require('./routes/ai')
+const calendarRoutes = require('./routes/calendar')
+const webhookRoutes = require('./routes/webhooks')
+const billingRoutes = require('./routes/billing')
+const notificationRoutes = require('./routes/notifications')
+const dashboardRoutes = require('./routes/dashboard')
+const stripeConnectRoutes = require('./routes/stripe-connect')
+const reportsRoutes = require('./routes/reports')
+const accountantRoutes = require('./routes/accountant')
+const xeroRoutes = require('./routes/xero')
+
+const { verifyToken } = require('./middleware/auth')
+const { scheduleJobs } = require('./services/scheduler.service')
+
+const app = express()
+const httpServer = createServer(app)
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.CLIENT_URL,
+    credentials: true
+  }
+})
+
+// Attach io to requests
+app.use((req, res, next) => {
+  req.io = io
+  next()
+})
+
+// Security
+app.use(helmet({ contentSecurityPolicy: false }))
+app.use(cors({
+  origin: process.env.CLIENT_URL,
+  credentials: true
+}))
+
+// Raw body for Stripe webhooks (must be before express.json)
+app.use('/api/webhooks', express.raw({ type: 'application/json' }), webhookRoutes)
+
+app.use(express.json({ limit: '10mb' }))
+app.use(express.urlencoded({ extended: true }))
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: { error: 'Too many requests, please try again later.' }
+})
+app.use('/api/', limiter)
+
+// Public routes
+app.use('/api/auth', authRoutes)
+app.use('/api/calendar', calendarRoutes)
+
+// Stripe Connect callback (public — Stripe redirects here after OAuth)
+const stripeConnectRouter = require('./routes/stripe-connect')
+app.get('/api/stripe/callback', stripeConnectRouter)
+
+// Xero callback (public — Xero redirects here after OAuth)
+app.get('/api/xero/callback', xeroRoutes)
+
+// Public job endpoints (customer-facing, no auth)
+const { PrismaClient } = require('@prisma/client')
+const _prisma = new PrismaClient()
+
+app.get('/api/jobs/:id/public', async (req, res) => {
+  try {
+    const job = await _prisma.job.findUnique({
+      where: { id: req.params.id },
+      select: {
+        id: true, customerName: true, jobType: true, address: true,
+        suburb: true, scheduledAt: true, durationMinutes: true,
+        status: true, confirmedByCustomer: true, customerPhone: true
+      }
+    })
+    if (!job) return res.status(404).json({ error: 'Job not found' })
+    res.json({ job: { ...job, customerConfirmed: job.confirmedByCustomer } })
+  } catch { res.status(500).json({ error: 'Failed to load job' }) }
+})
+
+app.post('/api/jobs/:id/confirm', async (req, res) => {
+  const { action } = req.body
+  try {
+    const job = await _prisma.job.findUnique({ where: { id: req.params.id } })
+    if (!job) return res.status(404).json({ error: 'Job not found' })
+    if (action === 'confirm') {
+      await _prisma.job.update({ where: { id: job.id }, data: { status: 'CONFIRMED', confirmedByCustomer: true } })
+      await _prisma.notification.create({
+        data: {
+          businessId: job.businessId, type: 'job_confirmed', priority: 'info',
+          title: 'Job Confirmed',
+          body: `${job.customerName} confirmed their job`,
+          actionUrl: `/jobs/${job.id}`
+        }
+      }).catch(() => {})
+    } else {
+      await _prisma.job.update({ where: { id: job.id }, data: { status: 'CANCELLED' } })
+    }
+    res.json({ success: true })
+  } catch { res.status(500).json({ error: 'Failed to update job' }) }
+})
+
+// Protected routes
+app.use('/api/dashboard', verifyToken, dashboardRoutes)
+app.use('/api/business', verifyToken, businessRoutes)
+app.use('/api/jobs', verifyToken, jobRoutes)
+app.use('/api/invoices', verifyToken, invoiceRoutes)
+app.use('/api/quotes', verifyToken, quoteRoutes)
+app.use('/api/customers', verifyToken, customerRoutes)
+app.use('/api/ai', verifyToken, aiRoutes)
+app.use('/api/billing', verifyToken, billingRoutes)
+app.use('/api/stripe', verifyToken, stripeConnectRoutes)
+app.use('/api/reports', verifyToken, reportsRoutes)
+app.use('/api/accountant', verifyToken, accountantRoutes)
+app.use('/api/xero', verifyToken, xeroRoutes)
+app.use('/api/notifications', verifyToken, notificationRoutes)
+
+// Health check
+app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }))
+
+// Socket.io for real-time
+io.on('connection', (socket) => {
+  socket.on('join-business', (businessId) => {
+    socket.join(`business:${businessId}`)
+  })
+  socket.on('disconnect', () => {})
+})
+
+// Start background jobs
+scheduleJobs()
+
+const PORT = process.env.PORT || 4000
+httpServer.listen(PORT, () => {
+  console.log(`Knock Off server running on port ${PORT}`)
+})
+
+module.exports = { app, io }
