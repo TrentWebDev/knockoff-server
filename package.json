@@ -5,12 +5,13 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "build": "prisma generate",
     "dev": "nodemon index.js",
-    "db:generate": "prisma generate --schema=../prisma/schema.prisma",
-    "db:migrate": "prisma migrate dev --schema=../prisma/schema.prisma",
-    "db:push": "prisma db push --schema=../prisma/schema.prisma",
-    "db:studio": "prisma studio --schema=../prisma/schema.prisma",
-    "db:seed": "node ../prisma/seed.js"
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio",
+    "db:seed": "node prisma/seed.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.24.3",

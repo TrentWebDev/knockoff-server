@@ -1,0 +1,470 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String         @id @default(uuid())
+  email             String         @unique
+  passwordHash      String
+  firstName         String
+  lastName          String
+  phone             String
+  role              UserRole       @default(OWNER)
+  business          Business?      @relation(fields: [businessId], references: [id])
+  businessId        String?
+  emailVerified     Boolean        @default(false)
+  emailVerifyToken  String?
+  resetPasswordToken String?
+  resetPasswordExpiry DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  notifications     Notification[]
+  lastLoginAt       DateTime?
+
+  @@index([email])
+  @@index([businessId])
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  STAFF
+}
+
+model Business {
+  id                    String         @id @default(uuid())
+  name                  String
+  abn                   String?
+  tradeType             String
+  logoUrl               String?
+  phone                 String
+  email                 String
+  address               String?
+  suburb                String
+  state                 String
+  postcode              String?
+  serviceRadius         Int            @default(50)
+  serviceSuburbs        String[]       @default([])
+
+  hourlyRate            Int            @default(0)
+  emergencyRate         Int            @default(0)
+  calloutFee            Int            @default(0)
+  materialMarkup        Float          @default(0.2)
+  gstRegistered         Boolean        @default(true)
+
+  invoicePrefix         String         @default("INV")
+  nextInvoiceNumber     Int            @default(1)
+  paymentTermsDays      Int            @default(7)
+  bankName              String?
+  bankBsb               String?
+  bankAccount           String?
+  stripeConnectId       String?
+
+  aiBusinessHours       Boolean        @default(false)
+  aiAfterHours          Boolean        @default(true)
+  aiGreeting            String?
+  aiServiceAreas        String?
+  aiTone                String         @default("casual")
+  aiServices            String[]       @default([])
+  invoiceFooter         String?
+
+  workingHoursStart     String         @default("07:00")
+  workingHoursEnd       String         @default("17:00")
+  workingDays           String[]       @default(["MON","TUE","WED","THU","FRI"])
+  jobBufferMinutes      Int            @default(30)
+  maxJobsPerDay         Int            @default(6)
+
+  googleCalendarId      String?
+  googleRefreshToken    String?
+  googleAccessToken     String?
+  googleTokenExpiry     DateTime?
+
+  twilioPhoneNumber     String?
+
+  subscriptionTier      SubscriptionTier @default(TRIAL)
+  subscriptionStatus    String         @default("trialing")
+  stripeCustomerId      String?
+  stripeSubscriptionId  String?
+  trialEndsAt           DateTime?
+  subscriptionEndsAt    DateTime?
+
+  // Financial settings
+  basLodgementFrequency String         @default("QUARTERLY")
+  latePaymentFee        Int            @default(0)
+  latePaymentFeeType    String         @default("flat")
+  earlyPaymentDiscount  Float          @default(0)
+
+  // Xero integration
+  xeroConnectId         String?
+  xeroRefreshToken      String?
+  xeroAccessToken       String?
+  xeroTokenExpiry       DateTime?
+  xeroTenantId          String?
+
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  users                 User[]
+  customers             Customer[]
+  jobs                  Job[]
+  invoices              Invoice[]
+  quotes                Quote[]
+  conversations         Conversation[]
+  notifications         Notification[]
+  calendarEvents        CalendarEvent[]
+  auditLogs             AuditLog[]
+  accountantInvites     AccountantInvite[]
+
+  @@index([stripeCustomerId])
+}
+
+enum SubscriptionTier {
+  TRIAL
+  SOLO
+  GROWING
+  BUSINESS
+}
+
+model Customer {
+  id              String         @id @default(uuid())
+  business        Business       @relation(fields: [businessId], references: [id])
+  businessId      String
+  firstName       String
+  lastName        String
+  email           String?
+  phone           String
+  address         String?
+  suburb          String?
+  state           String?
+  postcode        String?
+  propertyType    String?
+  notes           String?
+  referralSource  String?
+  birthday        DateTime?
+  paymentRating   Float          @default(1.0)
+  isVip           Boolean        @default(false)
+  totalSpend      Int            @default(0)
+  lastJobAt       DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  jobs            Job[]
+  invoices        Invoice[]
+  quotes          Quote[]
+  conversations   Conversation[]
+
+  @@index([businessId])
+  @@index([phone])
+  @@index([email])
+}
+
+model Job {
+  id              String         @id @default(uuid())
+  business        Business       @relation(fields: [businessId], references: [id])
+  businessId      String
+  customer        Customer?      @relation(fields: [customerId], references: [id])
+  customerId      String?
+  customerName    String
+  customerPhone   String
+  customerEmail   String?
+  address         String
+  suburb          String
+  jobType         String
+  description     String
+  notes           String?
+  status          JobStatus      @default(PENDING)
+  priority        JobPriority    @default(NORMAL)
+  scheduledAt     DateTime?
+  durationMinutes Int            @default(60)
+  completedAt     DateTime?
+  accessNotes     String?
+  materialsNeeded String?
+  googleEventId   String?
+  confirmationSentAt DateTime?
+  confirmedByCustomer Boolean   @default(false)
+  cancelledAt     DateTime?
+  cancellationReason String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  invoice         Invoice?
+  photos          JobPhoto[]
+
+  @@index([businessId])
+  @@index([customerId])
+  @@index([scheduledAt])
+  @@index([status])
+}
+
+enum JobStatus {
+  PENDING
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum JobPriority {
+  EMERGENCY
+  URGENT
+  NORMAL
+  LOW
+}
+
+model Invoice {
+  id              String         @id @default(uuid())
+  business        Business       @relation(fields: [businessId], references: [id])
+  businessId      String
+  customer        Customer?      @relation(fields: [customerId], references: [id])
+  customerId      String?
+  job             Job?           @relation(fields: [jobId], references: [id])
+  jobId           String?        @unique
+  invoiceNumber   String
+  customerName    String
+  customerEmail   String?
+  customerPhone   String?
+  customerAddress String?
+  customerAbn     String?
+  issueDate       DateTime       @default(now())
+  dueDate         DateTime
+  status          InvoiceStatus  @default(DRAFT)
+  lineItems       InvoiceLineItem[]
+  subtotalCents   Int
+  gstCents        Int
+  totalCents      Int
+  depositCents    Int            @default(0)
+  balanceDueCents Int
+  notes           String?
+  stripePaymentLinkId String?
+  stripePaymentLinkUrl String?
+  stripePaymentIntentId String?
+  paidAt          DateTime?
+  paidAmountCents Int?
+  paymentMethod   String?
+  voiceTranscript String?
+  xeroInvoiceId   String?
+  xeroSyncedAt    DateTime?
+  sentAt          DateTime?
+  viewedAt        DateTime?
+  reminderSentAt  DateTime?
+  overdueSentAt   DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([businessId])
+  @@index([customerId])
+  @@index([status])
+  @@index([invoiceNumber])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  VIEWED
+  PAID
+  OVERDUE
+  CANCELLED
+  WARRANTY
+}
+
+model InvoiceLineItem {
+  id              String   @id @default(uuid())
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId       String
+  description     String
+  quantity        Float
+  unitPriceCents  Int
+  totalCents      Int
+  category        String   @default("labor")
+  sortOrder       Int      @default(0)
+
+  @@index([invoiceId])
+}
+
+model Quote {
+  id              String         @id @default(uuid())
+  business        Business       @relation(fields: [businessId], references: [id])
+  businessId      String
+  customer        Customer?      @relation(fields: [customerId], references: [id])
+  customerId      String?
+  convertedToInvoiceId String?
+  quoteNumber     String
+  customerName    String
+  customerEmail   String?
+  customerPhone   String?
+  customerAddress String?
+  jobDescription  String
+  validUntil      DateTime
+  status          QuoteStatus    @default(DRAFT)
+  lineItems       QuoteLineItem[]
+  subtotalCents   Int
+  gstCents        Int
+  totalCents      Int
+  notes           String?
+  showLineItems   Boolean        @default(true)
+  sentAt          DateTime?
+  viewedCount     Int            @default(0)
+  lastViewedAt    DateTime?
+  acceptedAt      DateTime?
+  declinedAt      DateTime?
+  followUp1SentAt DateTime?
+  followUp2SentAt DateTime?
+  followUp3SentAt DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([businessId])
+  @@index([customerId])
+  @@index([status])
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  VIEWED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+model QuoteLineItem {
+  id              String   @id @default(uuid())
+  quote           Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quoteId         String
+  description     String
+  quantity        Float
+  unitPriceCents  Int
+  totalCents      Int
+  category        String   @default("labor")
+  sortOrder       Int      @default(0)
+
+  @@index([quoteId])
+}
+
+model Conversation {
+  id              String    @id @default(uuid())
+  business        Business  @relation(fields: [businessId], references: [id])
+  businessId      String
+  customer        Customer? @relation(fields: [customerId], references: [id])
+  customerId      String?
+  customerName    String?
+  customerPhone   String?
+  title           String?
+  channel         String    @default("sms")
+  status          String    @default("active")
+  handedOffAt     DateTime?
+  resolvedAt      DateTime?
+  summary         String?
+  leadType        String?
+  leadQuality     String?
+  tradieRating    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  messages        Message[]
+
+  @@index([businessId])
+  @@index([customerId])
+  @@index([customerPhone])
+}
+
+model Message {
+  id              String       @id @default(uuid())
+  conversation    Conversation @relation(fields: [conversationId], references: [id])
+  conversationId  String
+  role            String
+  content         String
+  toolCalls       Json?
+  toolResults     Json?
+  twilioSid       String?
+  createdAt       DateTime     @default(now())
+
+  @@index([conversationId])
+}
+
+model Notification {
+  id          String    @id @default(uuid())
+  business    Business  @relation(fields: [businessId], references: [id])
+  businessId  String
+  user        User?     @relation(fields: [userId], references: [id])
+  userId      String?
+  type        String
+  priority    String    @default("info")
+  title       String
+  body        String
+  actionUrl   String?
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([businessId])
+  @@index([userId])
+  @@index([readAt])
+}
+
+model CalendarEvent {
+  id              String   @id @default(uuid())
+  business        Business @relation(fields: [businessId], references: [id])
+  businessId      String
+  googleEventId   String?
+  title           String
+  description     String?
+  startAt         DateTime
+  endAt           DateTime
+  allDay          Boolean  @default(false)
+  type            String   @default("job")
+  color           String?
+  jobId           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([businessId])
+  @@index([startAt])
+}
+
+model JobPhoto {
+  id          String   @id @default(uuid())
+  job         Job      @relation(fields: [jobId], references: [id])
+  jobId       String
+  url         String
+  type        String   @default("before")
+  caption     String?
+  createdAt   DateTime @default(now())
+
+  @@index([jobId])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  business    Business @relation(fields: [businessId], references: [id])
+  businessId  String
+  entityType  String
+  entityId    String
+  action      String
+  description String
+  userId      String?
+  userEmail   String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([businessId])
+  @@index([entityId])
+  @@index([entityType, entityId])
+}
+
+model AccountantInvite {
+  id           String    @id @default(uuid())
+  business     Business  @relation(fields: [businessId], references: [id])
+  businessId   String
+  email        String
+  name         String?
+  token        String    @unique
+  acceptedAt   DateTime?
+  revokedAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([businessId])
+  @@index([token])
+}
