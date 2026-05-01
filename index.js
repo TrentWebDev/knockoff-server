@@ -44,8 +44,15 @@ app.use((req, res, next) => {
 
 // Security
 app.use(helmet({ contentSecurityPolicy: false }))
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'https://knockoff-server-production.up.railway.app'
+].filter(Boolean)
 app.use(cors({
-  origin: process.env.CLIENT_URL,
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true)
+    cb(null, true) // allow all during development
+  },
   credentials: true
 }))
 
@@ -132,6 +139,13 @@ app.use('/api/notifications', verifyToken, notificationRoutes)
 
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }))
+
+// Serve React frontend (static files + SPA fallback)
+const path = require('path')
+app.use(express.static(path.join(__dirname, 'public')))
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'))
+})
 
 // Socket.io for real-time
 io.on('connection', (socket) => {
