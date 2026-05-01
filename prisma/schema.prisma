@@ -25,6 +25,10 @@ model User {
   updatedAt         DateTime       @updatedAt
   notifications     Notification[]
   lastLoginAt       DateTime?
+  termsAcceptedAt   DateTime?
+  termsVersion      String?
+  termsIp           String?
+  aiDisclaimerAcceptedAt DateTime?
 
   @@index([email])
   @@index([businessId])
