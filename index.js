@@ -118,12 +118,39 @@ app.get('/api/quotes/view/:id', async (req, res) => {
   } catch { res.status(500).json({ error: 'Failed to load quote' }) }
 })
 
-// Stripe Connect callback (public — Stripe redirects here after OAuth)
-const stripeConnectRouter = require('./routes/stripe-connect')
-app.get('/api/stripe/callback', stripeConnectRouter)
-
-// Xero callback (public — Xero redirects here after OAuth)
-app.get('/api/xero/callback', xeroRoutes)
+// Xero OAuth callback (public — Xero redirects here after OAuth)
+const axios = require('axios')
+app.get('/api/xero/callback', async (req, res) => {
+  const { code, state: businessId, error } = req.query
+  // Always derive URL from request in production — avoids SERVER_URL=localhost misconfiguration
+  const baseUrl = `${req.protocol}://${req.get('host')}`
+  const appUrl = baseUrl
+  if (error || !code) return res.redirect(`${appUrl}/settings?xero=error&tab=integrations`)
+  try {
+    const redirectUri = `${baseUrl}/api/xero/callback`
+    const tokenRes = await axios.post('https://identity.xero.com/connect/token',
+      new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri }),
+      { auth: { username: process.env.XERO_CLIENT_ID, password: process.env.XERO_CLIENT_SECRET } }
+    )
+    const { access_token, refresh_token, expires_in } = tokenRes.data
+    const connectionsRes = await axios.get('https://api.xero.com/connections', {
+      headers: { Authorization: `Bearer ${access_token}` }
+    })
+    const tenant = connectionsRes.data[0]
+    await _prisma.business.update({
+      where: { id: businessId },
+      data: {
+        xeroConnectId: tenant?.tenantId, xeroTenantId: tenant?.tenantId,
+        xeroAccessToken: access_token, xeroRefreshToken: refresh_token,
+        xeroTokenExpiry: new Date(Date.now() + expires_in * 1000)
+      }
+    })
+    res.redirect(`${appUrl}/settings?xero=connected&tab=integrations`)
+  } catch (err) {
+    console.error('Xero callback error:', err.response?.data || err.message)
+    res.redirect(`${appUrl}/settings?xero=error&tab=integrations`)
+  }
+})
 
 // Public job endpoints (customer-facing, no auth)
 const { PrismaClient } = require('@prisma/client')

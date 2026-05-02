@@ -6,17 +6,17 @@ const axios = require('axios')
 const prisma = new PrismaClient()
 
 const XERO_CLIENT_ID = process.env.XERO_CLIENT_ID
-const XERO_CLIENT_SECRET = process.env.XERO_CLIENT_SECRET
-const XERO_REDIRECT_URI = process.env.SERVER_URL + '/api/xero/callback'
 const XERO_SCOPES = 'openid profile email accounting.transactions accounting.contacts offline_access'
 
 // GET /api/xero/connect-url
 router.get('/connect-url', (req, res) => {
   if (!XERO_CLIENT_ID) return res.status(500).json({ error: 'Xero not configured' })
+  const baseUrl = `${req.protocol}://${req.get('host')}`
+  const redirectUri = `${baseUrl}/api/xero/callback`
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: XERO_CLIENT_ID,
-    redirect_uri: XERO_REDIRECT_URI,
+    redirect_uri: redirectUri,
     scope: XERO_SCOPES,
     state: req.businessId
   })
