@@ -98,6 +98,7 @@ router.post('/:id/send', async (req, res) => {
     const business = req.user.business
 
     if (quote.customerEmail) {
+      const serverUrl = process.env.SERVER_URL || 'https://knockoff-server-production.up.railway.app'
       await sendEmail({
         to: quote.customerEmail,
         subject: `Quote from ${business.name} — $${(quote.totalCents / 100).toFixed(2)}`,
@@ -105,8 +106,9 @@ router.post('/:id/send', async (req, res) => {
         data: {
           quote,
           business,
-          acceptUrl: `${process.env.CLIENT_URL}/quote/${quote.id}/accept`,
-          declineUrl: `${process.env.CLIENT_URL}/quote/${quote.id}/decline`,
+          viewUrl: `${serverUrl}/quote/${quote.id}`,
+          acceptUrl: `${serverUrl}/quote/${quote.id}/accept`,
+          declineUrl: `${serverUrl}/quote/${quote.id}/decline`,
           validUntil: format(new Date(quote.validUntil), 'dd MMMM yyyy')
         }
       })

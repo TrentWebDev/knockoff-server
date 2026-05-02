@@ -246,6 +246,7 @@ model Invoice {
   stripePaymentLinkId String?
   stripePaymentLinkUrl String?
   stripePaymentIntentId String?
+  publicViewToken String?        @unique
   paidAt          DateTime?
   paidAmountCents Int?
   paymentMethod   String?

@@ -74,6 +74,50 @@ app.use('/api/', limiter)
 app.use('/api/auth', authRoutes)
 app.use('/api/calendar', calendarRoutes)
 
+// Public invoice view (token-based, no auth)
+app.get('/api/invoices/view/:token', async (req, res) => {
+  try {
+    const invoice = await _prisma.invoice.findUnique({
+      where: { publicViewToken: req.params.token },
+      include: {
+        lineItems: { orderBy: { sortOrder: 'asc' } },
+        business: {
+          select: {
+            name: true, abn: true, phone: true, email: true,
+            address: true, suburb: true, state: true, postcode: true,
+            logoUrl: true, gstRegistered: true,
+            bankAccountName: true, bankBsb: true, bankAccountNumber: true
+          }
+        }
+      }
+    })
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+    if (!invoice.viewedAt) {
+      await _prisma.invoice.update({
+        where: { id: invoice.id },
+        data: { viewedAt: new Date(), status: invoice.status === 'SENT' ? 'VIEWED' : invoice.status }
+      })
+    }
+    const { publicViewToken, stripePaymentIntentId, ...safe } = invoice
+    res.json({ invoice: safe })
+  } catch { res.status(500).json({ error: 'Failed to load invoice' }) }
+})
+
+// Public quote view (UUID-based, no auth)
+app.get('/api/quotes/view/:id', async (req, res) => {
+  try {
+    const quote = await _prisma.quote.findUnique({
+      where: { id: req.params.id },
+      include: {
+        lineItems: { orderBy: { sortOrder: 'asc' } },
+        business: { select: { name: true, abn: true, phone: true, email: true, address: true, suburb: true, state: true, logoUrl: true } }
+      }
+    })
+    if (!quote) return res.status(404).json({ error: 'Quote not found' })
+    res.json({ quote })
+  } catch { res.status(500).json({ error: 'Failed to load quote' }) }
+})
+
 // Stripe Connect callback (public — Stripe redirects here after OAuth)
 const stripeConnectRouter = require('./routes/stripe-connect')
 app.get('/api/stripe/callback', stripeConnectRouter)

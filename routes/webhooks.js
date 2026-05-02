@@ -52,23 +52,25 @@ router.post('/stripe', async (req, res) => {
         break
       }
 
-      case 'payment_link.payment_completed':
-      case 'checkout.session.completed': {
-        const session = event.data.object
-        if (session.metadata?.invoiceId) {
-          const invoice = await prisma.invoice.findUnique({ where: { id: session.metadata.invoiceId } })
-          if (invoice) {
+      case 'payment_link.completed':
+      case 'payment_intent.succeeded': {
+        const obj = event.data.object
+        const invoiceId = obj.metadata?.invoiceId
+        if (invoiceId) {
+          const invoice = await prisma.invoice.findUnique({ where: { id: invoiceId } })
+          if (invoice && invoice.status !== 'PAID') {
+            const amountPaid = obj.amount_received || obj.amount || 0
             await prisma.invoice.update({
               where: { id: invoice.id },
-              data: { status: 'PAID', paidAt: new Date(), paidAmountCents: session.amount_total }
+              data: { status: 'PAID', paidAt: new Date(), paidAmountCents: amountPaid, balanceDueCents: 0 }
             })
             await prisma.notification.create({
               data: {
                 businessId: invoice.businessId,
                 type: 'invoice_paid',
                 priority: 'info',
-                title: '💰 Invoice Paid',
-                body: `${invoice.customerName} paid invoice ${invoice.invoiceNumber} — $${(session.amount_total / 100).toFixed(2)}`,
+                title: 'Invoice Paid',
+                body: `${invoice.customerName} paid invoice ${invoice.invoiceNumber} — $${(amountPaid / 100).toFixed(2)}`,
                 actionUrl: `/invoices/${invoice.id}`
               }
             })

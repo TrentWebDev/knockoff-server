@@ -8,6 +8,7 @@ const { sendSMS } = require('../services/sms.service')
 const { createStripePaymentLink } = require('../services/stripe.service')
 const { addDays, format } = require('date-fns')
 const audit = require('../services/audit.service')
+const { v4: uuidv4 } = require('uuid')
 
 const prisma = new PrismaClient()
 
@@ -111,6 +112,7 @@ router.post('/', [
         balanceDueCents,
         notes,
         voiceTranscript,
+        publicViewToken: uuidv4(),
         lineItems: {
           create: lineItems.map((item, idx) => ({
             description: item.description,
@@ -210,6 +212,7 @@ router.post('/:id/send', async (req, res) => {
 
     // Send email
     if (sendVia.includes('email') && invoice.customerEmail) {
+      const serverUrl = process.env.SERVER_URL || 'https://knockoff-server-production.up.railway.app'
       await sendEmail({
         to: invoice.customerEmail,
         subject: `Tax Invoice ${invoice.invoiceNumber} from ${business.name}`,
@@ -218,6 +221,7 @@ router.post('/:id/send', async (req, res) => {
           invoice,
           business,
           paymentLink: paymentLink?.url,
+          viewUrl: invoice.publicViewToken ? `${serverUrl}/invoice/${invoice.publicViewToken}` : null,
           formattedTotal: `$${(invoice.totalCents / 100).toFixed(2)}`,
           formattedDue: `$${(invoice.balanceDueCents / 100).toFixed(2)}`,
           dueDateFormatted: format(new Date(invoice.dueDate), 'dd MMMM yyyy')
