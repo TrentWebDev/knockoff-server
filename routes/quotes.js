@@ -3,6 +3,7 @@ const router = express.Router()
 const { PrismaClient } = require('@prisma/client')
 const { sendEmail } = require('../services/email.service')
 const { addDays, format } = require('date-fns')
+const { v4: uuidv4 } = require('uuid')
 
 const prisma = new PrismaClient()
 
@@ -175,12 +176,20 @@ router.post('/:id/convert', async (req, res) => {
     if (!quote) return res.status(404).json({ error: 'Quote not found' })
 
     const business = req.user.business
-    const invoiceNumber = `${business.invoicePrefix || 'INV'}-${String(business.nextInvoiceNumber || 1).padStart(4, '0')}`
+
+    const updatedBusiness = await prisma.business.update({
+      where: { id: req.businessId },
+      data: { nextInvoiceNumber: { increment: 1 } },
+      select: { nextInvoiceNumber: true, invoicePrefix: true, paymentTermsDays: true }
+    })
+    const invoiceNumber = `${updatedBusiness.invoicePrefix || 'INV'}-${String(updatedBusiness.nextInvoiceNumber - 1).padStart(4, '0')}`
 
     const invoice = await prisma.invoice.create({
       data: {
         businessId: req.businessId,
+        customerId: quote.customerId || undefined,
         invoiceNumber,
+        publicViewToken: uuidv4(),
         customerName: quote.customerName,
         customerEmail: quote.customerEmail,
         customerPhone: quote.customerPhone,
@@ -189,25 +198,21 @@ router.post('/:id/convert', async (req, res) => {
         gstCents: quote.gstCents,
         totalCents: quote.totalCents,
         balanceDueCents: quote.totalCents,
-        paymentTermsDays: business.paymentTermsDays || 7,
-        dueDate: new Date(Date.now() + (business.paymentTermsDays || 7) * 86400000),
+        paymentTermsDays: updatedBusiness.paymentTermsDays || 7,
+        dueDate: addDays(new Date(), updatedBusiness.paymentTermsDays || 7),
         notes: quote.notes,
         lineItems: {
-          create: quote.lineItems.map(item => ({
+          create: quote.lineItems.map((item, idx) => ({
             description: item.description,
             quantity: item.quantity,
             unitPriceCents: item.unitPriceCents,
             totalCents: item.totalCents,
-            category: item.category
+            category: item.category || 'labor',
+            sortOrder: idx
           }))
         }
       },
       include: { lineItems: true }
-    })
-
-    await prisma.business.update({
-      where: { id: req.businessId },
-      data: { nextInvoiceNumber: { increment: 1 } }
     })
 
     await prisma.quote.update({
