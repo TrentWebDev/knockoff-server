@@ -225,6 +225,34 @@ router.post('/:id/confirm', async (req, res) => {
   }
 })
 
+// POST /api/jobs/:id/photos — upload job photo (base64 data URL)
+router.post('/:id/photos', async (req, res) => {
+  const { url, type = 'before', caption } = req.body
+  if (!url) return res.status(400).json({ error: 'url required' })
+  try {
+    const job = await prisma.job.findFirst({ where: { id: req.params.id, businessId: req.businessId } })
+    if (!job) return res.status(404).json({ error: 'Job not found' })
+    const photo = await prisma.jobPhoto.create({
+      data: { jobId: job.id, url, type, caption: caption || null }
+    })
+    res.status(201).json({ photo })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to save photo' })
+  }
+})
+
+// DELETE /api/jobs/:id/photos/:photoId
+router.delete('/:id/photos/:photoId', async (req, res) => {
+  try {
+    const job = await prisma.job.findFirst({ where: { id: req.params.id, businessId: req.businessId } })
+    if (!job) return res.status(404).json({ error: 'Job not found' })
+    await prisma.jobPhoto.deleteMany({ where: { id: req.params.photoId, jobId: job.id } })
+    res.json({ success: true })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete photo' })
+  }
+})
+
 // DELETE /api/jobs/:id
 router.delete('/:id', async (req, res) => {
   try {
