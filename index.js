@@ -87,7 +87,7 @@ app.get('/api/invoices/view/:token', async (req, res) => {
             name: true, abn: true, phone: true, email: true,
             address: true, suburb: true, state: true, postcode: true,
             logoUrl: true, gstRegistered: true,
-            bankAccountName: true, bankBsb: true, bankAccountNumber: true
+            bankName: true, bankBsb: true, bankAccount: true
           }
         }
       }
