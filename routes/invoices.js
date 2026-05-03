@@ -59,6 +59,49 @@ router.get('/:id', async (req, res) => {
   }
 })
 
+// POST /api/invoices/bulk-remind — send payment reminders to all OVERDUE invoices
+router.post('/bulk-remind', async (req, res) => {
+  const business = req.user.business
+  try {
+    const overdueInvoices = await prisma.invoice.findMany({
+      where: { businessId: req.businessId, status: 'OVERDUE' }
+    })
+
+    let sent = 0
+    for (const invoice of overdueInvoices) {
+      try {
+        if (invoice.customerEmail) {
+          await sendEmail({
+            to: invoice.customerEmail,
+            subject: `Payment reminder: Invoice ${invoice.invoiceNumber}`,
+            template: 'invoice-reminder',
+            data: {
+              invoice,
+              business,
+              daysOverdue: Math.floor((Date.now() - new Date(invoice.dueDate).getTime()) / 86400000)
+            }
+          })
+        }
+        if (invoice.customerPhone) {
+          await sendSMS({
+            to: invoice.customerPhone,
+            body: `Hi ${invoice.customerName.split(' ')[0]}, just a reminder that invoice ${invoice.invoiceNumber} for $${(invoice.balanceDueCents / 100).toFixed(2)} from ${business.name} is overdue. Please get in touch.`,
+            from: business.twilioPhoneNumber
+          })
+        }
+        await prisma.invoice.update({ where: { id: invoice.id }, data: { reminderSentAt: new Date() } })
+        sent++
+      } catch (e) {
+        console.warn(`Failed to remind invoice ${invoice.id}:`, e.message)
+      }
+    }
+
+    res.json({ sent, total: overdueInvoices.length })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to send bulk reminders' })
+  }
+})
+
 // POST /api/invoices — create invoice
 router.post('/', [
   body('customerName').trim().notEmpty(),

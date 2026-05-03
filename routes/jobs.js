@@ -4,6 +4,8 @@ const { PrismaClient } = require('@prisma/client')
 const { body, validationResult } = require('express-validator')
 const { sendJobConfirmationSMS, sendJobConfirmationEmail } = require('../services/calendar.service')
 const { syncJobToGoogleCalendar, deleteGoogleCalendarEvent } = require('../services/calendar.service')
+const { v4: uuidv4 } = require('uuid')
+const { addDays } = require('date-fns')
 
 const prisma = new PrismaClient()
 
@@ -185,6 +187,86 @@ router.post('/:id/complete', async (req, res) => {
     res.json({ job: updated, message: 'Job marked complete. Ready to create invoice.' })
   } catch (err) {
     res.status(500).json({ error: 'Failed to complete job' })
+  }
+})
+
+// POST /api/jobs/:id/complete-and-invoice — mark complete + create draft invoice in one tap
+router.post('/:id/complete-and-invoice', async (req, res) => {
+  try {
+    const job = await prisma.job.findFirst({
+      where: { id: req.params.id, businessId: req.businessId },
+      include: { invoice: true }
+    })
+    if (!job) return res.status(404).json({ error: 'Job not found' })
+
+    // If invoice already exists, just complete and return existing invoice
+    if (job.invoice) {
+      await prisma.job.update({ where: { id: job.id }, data: { status: 'COMPLETED', completedAt: new Date() } })
+      if (job.customerId) {
+        await prisma.customer.update({ where: { id: job.customerId }, data: { lastJobAt: new Date() } }).catch(() => {})
+      }
+      return res.json({ invoiceId: job.invoice.id, existed: true })
+    }
+
+    const updatedBusiness = await prisma.business.update({
+      where: { id: req.businessId },
+      data: { nextInvoiceNumber: { increment: 1 } },
+      select: { nextInvoiceNumber: true, invoicePrefix: true, paymentTermsDays: true, hourlyRate: true, gstRegistered: true }
+    })
+
+    const invoiceNumber = `${updatedBusiness.invoicePrefix}-${String(updatedBusiness.nextInvoiceNumber - 1).padStart(4, '0')}`
+    const hourlyRate = updatedBusiness.hourlyRate || 12000
+    const durationHours = job.durationMinutes ? job.durationMinutes / 60 : 2
+    const quantity = Math.round(durationHours * 2) / 2
+    const unitPriceCents = hourlyRate
+    const subtotalCents = Math.round(quantity * unitPriceCents)
+    const gstCents = updatedBusiness.gstRegistered ? Math.round(subtotalCents * 0.1) : 0
+    const totalCents = subtotalCents + gstCents
+    const jobTypeLabel = job.jobType
+      ? job.jobType.charAt(0) + job.jobType.slice(1).toLowerCase().replace(/_/g, ' ') + ' labour'
+      : 'Labour'
+
+    const [updatedJob, invoice] = await Promise.all([
+      prisma.job.update({ where: { id: job.id }, data: { status: 'COMPLETED', completedAt: new Date() } }),
+      prisma.invoice.create({
+        data: {
+          businessId: req.businessId,
+          jobId: job.id,
+          customerId: job.customerId || undefined,
+          invoiceNumber,
+          customerName: job.customerName,
+          customerEmail: job.customerEmail || null,
+          customerPhone: job.customerPhone,
+          customerAddress: [job.address, job.suburb].filter(Boolean).join(', '),
+          dueDate: addDays(new Date(), updatedBusiness.paymentTermsDays || 7),
+          subtotalCents,
+          gstCents,
+          totalCents,
+          balanceDueCents: totalCents,
+          publicViewToken: uuidv4(),
+          notes: job.description || null,
+          lineItems: {
+            create: [{
+              description: jobTypeLabel,
+              quantity,
+              unitPriceCents,
+              totalCents: subtotalCents,
+              category: 'labor',
+              sortOrder: 0
+            }]
+          }
+        }
+      })
+    ])
+
+    if (job.customerId) {
+      await prisma.customer.update({ where: { id: job.customerId }, data: { lastJobAt: new Date() } }).catch(() => {})
+    }
+
+    res.json({ invoice, job: updatedJob, invoiceId: invoice.id })
+  } catch (err) {
+    console.error('Complete-and-invoice error:', err)
+    res.status(500).json({ error: 'Failed to complete job and create invoice' })
   }
 })
 
