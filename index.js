@@ -124,9 +124,10 @@ const axios = require('axios')
 app.get('/api/xero/callback', async (req, res) => {
   const { code, state: businessId, error } = req.query
   // Always derive URL from request in production — avoids SERVER_URL=localhost misconfiguration
-  const baseUrl = `${req.protocol}://${req.get('host')}`
-  const appUrl = baseUrl
-  if (error || !code) return res.redirect(`${appUrl}/settings?xero=error&tab=integrations`)
+  const host = req.get('host')
+  const scheme = host.includes('localhost') ? 'http' : 'https'
+  const baseUrl = `${scheme}://${host}`
+  if (error || !code) return res.redirect(`${baseUrl}/settings?xero=error&tab=integrations`)
   try {
     const redirectUri = `${baseUrl}/api/xero/callback`
     const tokenRes = await axios.post('https://identity.xero.com/connect/token',

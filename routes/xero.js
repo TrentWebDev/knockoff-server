@@ -11,8 +11,9 @@ const XERO_SCOPES = 'openid profile email accounting.transactions accounting.con
 // GET /api/xero/connect-url
 router.get('/connect-url', (req, res) => {
   if (!XERO_CLIENT_ID) return res.status(500).json({ error: 'Xero not configured' })
-  const baseUrl = `${req.protocol}://${req.get('host')}`
-  const redirectUri = `${baseUrl}/api/xero/callback`
+  const host = req.get('host')
+  const scheme = host.includes('localhost') ? 'http' : 'https'
+  const redirectUri = `${scheme}://${host}/api/xero/callback`
   const params = new URLSearchParams({
     response_type: 'code',
     client_id: XERO_CLIENT_ID,
