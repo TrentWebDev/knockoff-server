@@ -17,6 +17,7 @@ async function runScheduledTasks() {
   try {
     await Promise.all([
       checkOverdueInvoices(),
+      expireOldQuotes(),
       sendInvoiceReminders(),
       sendQuoteFollowUps(),
       sendDailySummaries(),
@@ -51,6 +52,17 @@ async function checkOverdueInvoices() {
       }
     })
   }
+}
+
+async function expireOldQuotes() {
+  const now = new Date()
+  await prisma.quote.updateMany({
+    where: {
+      status: { in: ['SENT', 'VIEWED', 'DRAFT'] },
+      validUntil: { lt: now }
+    },
+    data: { status: 'EXPIRED' }
+  })
 }
 
 async function sendInvoiceReminders() {
