@@ -45,12 +45,13 @@ router.post('/register', [
       }
     })
 
-    await sendEmail({
+    const serverUrl = 'https://knockoff-server-production.up.railway.app'
+    sendEmail({
       to: email,
       subject: 'Welcome to Knock Off — verify your email',
       template: 'verify-email',
-      data: { firstName, verifyUrl: `${process.env.CLIENT_URL}/verify-email?token=${verifyToken}` }
-    })
+      data: { firstName, verifyUrl: `${serverUrl}/verify-email?token=${verifyToken}` }
+    }).catch(err => console.error('Verify email failed:', err.message))
 
     const token = generateToken(user.id)
     res.status(201).json({
@@ -109,32 +110,33 @@ router.post('/login', [
 // POST /api/auth/forgot-password
 router.post('/forgot-password', [body('email').isEmail().normalizeEmail()], async (req, res) => {
   const { email } = req.body
+  // Respond immediately — never block on email delivery
+  res.json({ message: 'If that email exists, a reset link has been sent.' })
+
   try {
     const user = await prisma.user.findUnique({ where: { email } })
-    // Always return success to prevent email enumeration
-    if (!user) return res.json({ message: 'If that email exists, a reset link has been sent.' })
+    if (!user) return
 
     const token = crypto.randomBytes(32).toString('hex')
-    const expiry = new Date(Date.now() + 3600000) // 1 hour
+    const expiry = new Date(Date.now() + 3600000)
 
     await prisma.user.update({
       where: { id: user.id },
       data: { resetPasswordToken: token, resetPasswordExpiry: expiry }
     })
 
-    await sendEmail({
+    const serverUrl = 'https://knockoff-server-production.up.railway.app'
+    sendEmail({
       to: email,
       subject: 'Reset your Knock Off password',
       template: 'reset-password',
       data: {
         firstName: user.firstName,
-        resetUrl: `${process.env.CLIENT_URL}/reset-password?token=${token}`
+        resetUrl: `${serverUrl}/reset-password?token=${token}`
       }
-    })
-
-    res.json({ message: 'If that email exists, a reset link has been sent.' })
+    }).catch(err => console.error('Reset email failed:', err.message))
   } catch (err) {
-    res.status(500).json({ error: 'Something went wrong. Please try again.' })
+    console.error('Forgot password error:', err.message)
   }
 })
 

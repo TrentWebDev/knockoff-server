@@ -7,7 +7,10 @@ const transporter = nodemailer.createTransport({
   auth: {
     user: process.env.SMTP_USER || 'apikey',
     pass: process.env.SMTP_PASS || process.env.SENDGRID_API_KEY
-  }
+  },
+  connectionTimeout: 8000,
+  greetingTimeout: 8000,
+  socketTimeout: 10000
 })
 
 const baseStyle = `
