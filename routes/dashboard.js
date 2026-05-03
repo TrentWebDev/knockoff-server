@@ -27,7 +27,8 @@ router.get('/', async (req, res) => {
       openQuotes,
       recentConversations,
       unreadNotifications,
-      recentPayments
+      recentPayments,
+      recentActivity
     ] = await Promise.all([
       prisma.job.findMany({
         where: { businessId, scheduledAt: { gte: todayStart, lte: todayEnd }, status: { not: 'CANCELLED' } },
@@ -62,6 +63,37 @@ router.get('/', async (req, res) => {
         where: { businessId, status: 'PAID', paidAt: { gte: monthStart, lte: monthEnd } },
         orderBy: { paidAt: 'desc' },
         take: 20
+      }),
+      // Activity feed: mix recent events across entity types
+      Promise.all([
+        prisma.invoice.findMany({
+          where: { businessId, status: 'PAID', paidAt: { gte: subDays(today, 14) } },
+          orderBy: { paidAt: 'desc' }, take: 10,
+          select: { id: true, invoiceNumber: true, customerName: true, paidAmountCents: true, totalCents: true, paidAt: true }
+        }),
+        prisma.job.findMany({
+          where: { businessId, status: 'COMPLETED', completedAt: { gte: subDays(today, 14) } },
+          orderBy: { completedAt: 'desc' }, take: 10,
+          select: { id: true, customerName: true, jobType: true, completedAt: true, totalCents: true }
+        }),
+        prisma.quote.findMany({
+          where: { businessId, status: 'ACCEPTED', acceptedAt: { gte: subDays(today, 14) } },
+          orderBy: { acceptedAt: 'desc' }, take: 10,
+          select: { id: true, customerName: true, totalCents: true, acceptedAt: true, convertedToInvoiceId: true }
+        }),
+        prisma.customer.findMany({
+          where: { businessId, createdAt: { gte: subDays(today, 14) } },
+          orderBy: { createdAt: 'desc' }, take: 5,
+          select: { id: true, firstName: true, lastName: true, createdAt: true }
+        })
+      ]).then(([paidInvs, completedJobs, acceptedQuotes, newCustomers]) => {
+        const events = [
+          ...paidInvs.map(i => ({ type: 'payment', id: i.id, at: i.paidAt, title: `Payment received from ${i.customerName}`, amount: i.paidAmountCents || i.totalCents, link: `/invoices/${i.id}` })),
+          ...completedJobs.map(j => ({ type: 'job_complete', id: j.id, at: j.completedAt, title: `Job completed for ${j.customerName}`, subtitle: j.jobType?.replace(/_/g, ' '), link: `/jobs/${j.id}` })),
+          ...acceptedQuotes.map(q => ({ type: 'quote_accepted', id: q.id, at: q.acceptedAt, title: `Quote accepted by ${q.customerName}`, amount: q.totalCents, link: q.convertedToInvoiceId ? `/invoices/${q.convertedToInvoiceId}` : null })),
+          ...newCustomers.map(c => ({ type: 'new_customer', id: c.id, at: c.createdAt, title: `New customer: ${c.firstName} ${c.lastName}`.trim(), link: `/customers/${c.id}` }))
+        ]
+        return events.sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 15)
       })
     ])
 
@@ -100,7 +132,8 @@ router.get('/', async (req, res) => {
       overdueInvoices: overdueInvoices.slice(0, 5),
       openQuotes: openQuotes.slice(0, 5),
       recentConversations: recentConversations.slice(0, 5),
-      unreadNotifications
+      unreadNotifications,
+      recentActivity
     })
   } catch (err) {
     console.error('Dashboard error:', err)

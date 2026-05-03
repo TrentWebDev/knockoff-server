@@ -162,6 +162,22 @@ router.put('/:id', async (req, res) => {
   }
 })
 
+// POST /api/jobs/:id/start — mark job as in progress
+router.post('/:id/start', async (req, res) => {
+  try {
+    const job = await prisma.job.findFirst({ where: { id: req.params.id, businessId: req.businessId } })
+    if (!job) return res.status(404).json({ error: 'Job not found' })
+    if (!['PENDING', 'CONFIRMED'].includes(job.status)) return res.status(400).json({ error: `Cannot start a job with status ${job.status}` })
+    const updated = await prisma.job.update({
+      where: { id: job.id },
+      data: { status: 'IN_PROGRESS' }
+    })
+    res.json({ job: updated })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to start job' })
+  }
+})
+
 // POST /api/jobs/:id/complete — mark complete, trigger invoice creation
 router.post('/:id/complete', async (req, res) => {
   try {

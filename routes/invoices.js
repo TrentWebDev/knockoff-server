@@ -304,6 +304,46 @@ router.post('/:id/send', async (req, res) => {
   }
 })
 
+// POST /api/invoices/:id/payment-link — generate Stripe payment link
+router.post('/:id/payment-link', async (req, res) => {
+  try {
+    const invoice = await prisma.invoice.findFirst({
+      where: { id: req.params.id, businessId: req.businessId }
+    })
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+    if (invoice.status === 'PAID') return res.status(400).json({ error: 'Invoice already paid' })
+    if (invoice.stripePaymentLinkUrl) return res.json({ url: invoice.stripePaymentLinkUrl })
+
+    const business = req.user.business
+    if (!business.stripeConnectId && !process.env.STRIPE_SECRET_KEY) {
+      return res.status(400).json({ error: 'Stripe not connected. Set up Stripe in Settings first.' })
+    }
+
+    const link = await createStripePaymentLink(invoice, business)
+    await prisma.invoice.update({
+      where: { id: invoice.id },
+      data: { stripePaymentLinkId: link.id, stripePaymentLinkUrl: link.url }
+    })
+    res.json({ url: link.url })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to generate payment link: ' + err.message })
+  }
+})
+
+// POST /api/invoices/:id/void — void/cancel an invoice
+router.post('/:id/void', async (req, res) => {
+  try {
+    const invoice = await prisma.invoice.findFirst({ where: { id: req.params.id, businessId: req.businessId } })
+    if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
+    if (invoice.status === 'PAID') return res.status(400).json({ error: 'Cannot void a paid invoice' })
+    const updated = await prisma.invoice.update({ where: { id: invoice.id }, data: { status: 'CANCELLED' } })
+    res.json({ invoice: updated })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to void invoice' })
+  }
+})
+
 // GET /api/invoices/:id/pdf — download PDF
 router.get('/:id/pdf', async (req, res) => {
   try {
