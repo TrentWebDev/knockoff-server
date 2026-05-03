@@ -70,4 +70,16 @@ router.post('/', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Failed to create customer' }) }
 })
 
+router.delete('/:id', async (req, res) => {
+  try {
+    const customer = await prisma.customer.findFirst({ where: { id: req.params.id, businessId: req.businessId } })
+    if (!customer) return res.status(404).json({ error: 'Customer not found' })
+    await prisma.customer.delete({ where: { id: customer.id } })
+    res.json({ success: true })
+  } catch (err) {
+    if (err.code === 'P2003') return res.status(409).json({ error: 'Cannot delete — customer has jobs or invoices. Archive them first.' })
+    res.status(500).json({ error: 'Failed to delete customer' })
+  }
+})
+
 module.exports = router

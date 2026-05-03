@@ -166,6 +166,50 @@ router.post('/:id/decline', async (req, res) => {
   } catch (err) { res.status(500).json({ error: 'Failed to decline quote' }) }
 })
 
+// POST /api/quotes/:id/follow-up — send follow-up reminder email
+router.post('/:id/follow-up', async (req, res) => {
+  try {
+    const quote = await prisma.quote.findFirst({
+      where: { id: req.params.id, businessId: req.businessId },
+      include: { lineItems: true }
+    })
+    if (!quote) return res.status(404).json({ error: 'Quote not found' })
+    if (!['SENT', 'VIEWED'].includes(quote.status)) return res.status(400).json({ error: 'Can only follow up on sent or viewed quotes' })
+
+    const business = req.user.business
+    const serverUrl = process.env.SERVER_URL || 'https://knockoff-server-production.up.railway.app'
+
+    const followUpNum = !quote.followUp1SentAt ? 1 : !quote.followUp2SentAt ? 2 : 3
+    const updateData = followUpNum === 1 ? { followUp1SentAt: new Date() }
+      : followUpNum === 2 ? { followUp2SentAt: new Date() }
+      : { followUp3SentAt: new Date() }
+
+    if (quote.customerEmail) {
+      await sendEmail({
+        to: quote.customerEmail,
+        subject: `Following up on your quote from ${business.name} — $${(quote.totalCents / 100).toFixed(2)}`,
+        template: 'quote',
+        data: {
+          quote,
+          business,
+          viewUrl: `${serverUrl}/quote/${quote.id}`,
+          acceptUrl: `${serverUrl}/quote/${quote.id}/accept`,
+          declineUrl: `${serverUrl}/quote/${quote.id}/decline`,
+          validUntil: format(new Date(quote.validUntil), 'dd MMMM yyyy'),
+          isFollowUp: true,
+          followUpNum
+        }
+      })
+    }
+
+    await prisma.quote.update({ where: { id: quote.id }, data: updateData })
+    res.json({ success: true, followUpNum })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to send follow-up' })
+  }
+})
+
 // POST /api/quotes/:id/convert — convert accepted quote to invoice
 router.post('/:id/convert', async (req, res) => {
   try {
