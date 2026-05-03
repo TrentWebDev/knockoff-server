@@ -147,10 +147,10 @@ app.get('/api/xero/callback', async (req, res) => {
         xeroTokenExpiry: new Date(Date.now() + expires_in * 1000)
       }
     })
-    res.redirect(`${appUrl}/settings?xero=connected&tab=integrations`)
+    res.redirect(`${baseUrl}/settings?xero=connected&tab=integrations`)
   } catch (err) {
     console.error('Xero callback error:', err.response?.data || err.message)
-    res.redirect(`${appUrl}/settings?xero=error&tab=integrations`)
+    res.redirect(`${baseUrl}/settings?xero=error&tab=integrations`)
   }
 })
 
