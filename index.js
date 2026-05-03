@@ -27,6 +27,7 @@ const { verifyToken } = require('./middleware/auth')
 const { scheduleJobs } = require('./services/scheduler.service')
 
 const app = express()
+app.set('trust proxy', true) // Railway sits behind nginx — req.protocol returns https correctly
 const httpServer = createServer(app)
 
 const io = new Server(httpServer, {
