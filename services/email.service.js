@@ -103,8 +103,8 @@ function renderTemplate(template, data) {
           <table>
             <tr><th>Description</th><th class="td-right">Qty</th><th class="td-right">Unit</th><th class="td-right">Total</th></tr>
             ${lineItemsHtml}
-            <tr><td colspan="3" class="td-right" style="color:#6B7280;padding-top:12px">Subtotal (ex GST)</td><td class="td-right" style="color:#6B7280">$${(invoice.subtotalCents / 100).toFixed(2)}</td></tr>
-            <tr><td colspan="3" class="td-right" style="color:#6B7280">GST (10%)</td><td class="td-right" style="color:#6B7280">$${(invoice.gstCents / 100).toFixed(2)}</td></tr>
+            ${invoice.gstCents > 0 ? `<tr><td colspan="3" class="td-right" style="color:#6B7280;padding-top:12px">Subtotal (ex GST)</td><td class="td-right" style="color:#6B7280">$${(invoice.subtotalCents / 100).toFixed(2)}</td></tr>` : ''}
+            ${invoice.gstCents > 0 ? `<tr><td colspan="3" class="td-right" style="color:#6B7280">GST (10%)</td><td class="td-right" style="color:#6B7280">$${(invoice.gstCents / 100).toFixed(2)}</td></tr>` : ''}
             ${invoice.depositCents > 0 ? `<tr><td colspan="3" class="td-right" style="color:#6B7280">Deposit paid</td><td class="td-right" style="color:#6B7280">-$${(invoice.depositCents / 100).toFixed(2)}</td></tr>` : ''}
             <tr class="total-row"><td colspan="3" class="td-right">TOTAL DUE</td><td class="td-right" style="color:#FF6B00;font-size:18px">${formattedDue}</td></tr>
           </table>

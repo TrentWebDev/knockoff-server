@@ -110,14 +110,16 @@ async function generateInvoicePDF(invoice, business) {
     const totalsLeft = cols.unit - 20
     const totalsRight = cols.total
 
-    doc.fontSize(10).font('Helvetica').fillColor(grey)
-      .text('Subtotal (ex GST)', totalsLeft, rowY, { width: colWidths.unit + 20, align: 'right' })
-      .text(`$${(invoice.subtotalCents / 100).toFixed(2)}`, totalsRight, rowY, { width: colWidths.total, align: 'right' })
-    rowY += 20
+    if (invoice.gstCents > 0) {
+      doc.fontSize(10).font('Helvetica').fillColor(grey)
+        .text('Subtotal (ex GST)', totalsLeft, rowY, { width: colWidths.unit + 20, align: 'right' })
+        .text(`$${(invoice.subtotalCents / 100).toFixed(2)}`, totalsRight, rowY, { width: colWidths.total, align: 'right' })
+      rowY += 20
 
-    doc.text('GST (10%)', totalsLeft, rowY, { width: colWidths.unit + 20, align: 'right' })
-      .text(`$${(invoice.gstCents / 100).toFixed(2)}`, totalsRight, rowY, { width: colWidths.total, align: 'right' })
-    rowY += 20
+      doc.text('GST (10%)', totalsLeft, rowY, { width: colWidths.unit + 20, align: 'right' })
+        .text(`$${(invoice.gstCents / 100).toFixed(2)}`, totalsRight, rowY, { width: colWidths.total, align: 'right' })
+      rowY += 20
+    }
 
     if (invoice.depositCents > 0) {
       doc.text('Deposit paid', totalsLeft, rowY, { width: colWidths.unit + 20, align: 'right' })
