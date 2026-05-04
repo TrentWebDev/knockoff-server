@@ -162,6 +162,24 @@ router.put('/:id', async (req, res) => {
   }
 })
 
+// POST /api/jobs/:id/send-confirmation — resend customer confirmation SMS/email
+router.post('/:id/send-confirmation', async (req, res) => {
+  try {
+    const job = await prisma.job.findFirst({ where: { id: req.params.id, businessId: req.businessId } })
+    if (!job) return res.status(404).json({ error: 'Job not found' })
+    if (!job.scheduledAt) return res.status(400).json({ error: 'Job has no scheduled time' })
+    if (!job.customerPhone && !job.customerEmail) return res.status(400).json({ error: 'No customer contact details' })
+    const business = req.user.business
+    const sent = { sms: false, email: false }
+    try { await sendJobConfirmationSMS(job, business); sent.sms = true } catch (e) {}
+    try { await sendJobConfirmationEmail(job, business); sent.email = true } catch (e) {}
+    if (!sent.sms && !sent.email) return res.status(500).json({ error: 'Failed to send — check SMS/email settings' })
+    res.json({ success: true, sent })
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to send confirmation' })
+  }
+})
+
 // POST /api/jobs/:id/start — mark job as in progress
 router.post('/:id/start', async (req, res) => {
   try {
