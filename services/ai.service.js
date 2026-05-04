@@ -302,26 +302,124 @@ async function runCustomerAI({ business, messages, conversationId }) {
 }
 
 // ─── INTERNAL AI (tradie-facing assistant) ───────────────────────────────────
+const INTERNAL_TOOLS = [
+  {
+    name: 'get_business_snapshot',
+    description: 'Get key business stats: revenue, outstanding invoices, overdue amounts, upcoming jobs, open quotes',
+    input_schema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'get_invoices',
+    description: 'List invoices filtered by status or search query',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['DRAFT', 'SENT', 'VIEWED', 'PAID', 'OVERDUE', 'CANCELLED'] },
+        search: { type: 'string', description: 'Search by customer name' },
+        limit: { type: 'number' }
+      }
+    }
+  },
+  {
+    name: 'get_jobs',
+    description: 'List jobs, optionally filtered by status or date range',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['PENDING', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] },
+        upcoming: { type: 'boolean', description: 'If true, only return upcoming scheduled jobs' },
+        limit: { type: 'number' }
+      }
+    }
+  },
+  {
+    name: 'get_customers',
+    description: 'Search or list customers',
+    input_schema: {
+      type: 'object',
+      properties: {
+        search: { type: 'string', description: 'Search by name, phone, or email' },
+        limit: { type: 'number' }
+      }
+    }
+  },
+  {
+    name: 'get_quotes',
+    description: 'List quotes filtered by status',
+    input_schema: {
+      type: 'object',
+      properties: {
+        status: { type: 'string', enum: ['DRAFT', 'SENT', 'VIEWED', 'ACCEPTED', 'DECLINED', 'EXPIRED'] },
+        limit: { type: 'number' }
+      }
+    }
+  }
+]
+
 async function runInternalAI({ business, messages, context }) {
-  const system = `You are Knock Off AI, the internal assistant for ${business.name}.
-You help the tradie manage their business: create invoices, schedule jobs, follow up quotes, pull reports.
+  const system = `You are Knock Off AI, the built-in business assistant for ${business.name}.
+You help the tradie manage their business: answer questions about invoices, jobs, customers, revenue. Give practical advice.
 
 Business: ${business.name} | ${business.tradeType} | ${business.suburb}, ${business.state}
 Hourly rate: $${(business.hourlyRate / 100).toFixed(2)}/hr
 Today: ${new Date().toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
 
-Be conversational and practical. Give direct answers. Don't be verbose.
-When creating invoices or quotes, confirm details before finalising.
-Use Australian currency (dollars and cents).`
+IMPORTANT: Use your tools to look up real data before answering questions about invoices, jobs, revenue, customers, or quotes. Never guess or make up numbers.
+Be conversational and practical. Give direct, useful answers. Don't be verbose. Use Australian currency.`
 
-  const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-5',
-    max_tokens: 1024,
-    system,
-    messages
-  })
+  const handlers = {
+    get_business_snapshot: async () => {
+      const now = new Date()
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+      const [invoices, overdueInvoices, upcomingJobs, openQuotes, paidThisMonth] = await Promise.all([
+        prisma.invoice.findMany({ where: { businessId: business.id, status: { in: ['SENT', 'VIEWED'] } }, select: { balanceDueCents: true, customerName: true, invoiceNumber: true, dueDate: true } }),
+        prisma.invoice.findMany({ where: { businessId: business.id, status: 'OVERDUE' }, select: { balanceDueCents: true, customerName: true, invoiceNumber: true } }),
+        prisma.job.findMany({ where: { businessId: business.id, scheduledAt: { gte: now }, status: { not: 'CANCELLED' } }, orderBy: { scheduledAt: 'asc' }, take: 5, select: { customerName: true, scheduledAt: true, jobType: true, status: true } }),
+        prisma.quote.findMany({ where: { businessId: business.id, status: { in: ['SENT', 'VIEWED'] } }, select: { totalCents: true, customerName: true, quoteNumber: true } }),
+        prisma.invoice.aggregate({ where: { businessId: business.id, status: 'PAID', paidAt: { gte: monthStart } }, _sum: { paidAmountCents: true, totalCents: true } })
+      ])
+      const monthRevenue = paidThisMonth._sum.paidAmountCents || paidThisMonth._sum.totalCents || 0
+      return {
+        monthRevenue: `$${(monthRevenue / 100).toFixed(2)}`,
+        outstandingCount: invoices.length,
+        outstandingTotal: `$${invoices.reduce((s, i) => s + (i.balanceDueCents || 0), 0) / 100}`,
+        overdueCount: overdueInvoices.length,
+        overdueTotal: `$${overdueInvoices.reduce((s, i) => s + (i.balanceDueCents || 0), 0) / 100}`,
+        overdueInvoices: overdueInvoices.map(i => `${i.customerName} — ${i.invoiceNumber}`),
+        upcomingJobs: upcomingJobs.map(j => `${j.customerName} — ${j.jobType} — ${new Date(j.scheduledAt).toLocaleString('en-AU')}`),
+        openQuotes: openQuotes.length,
+        quotePipeline: `$${openQuotes.reduce((s, q) => s + (q.totalCents || 0), 0) / 100}`
+      }
+    },
+    get_invoices: async ({ status, search, limit = 10 }) => {
+      const where = { businessId: business.id }
+      if (status) where.status = status
+      if (search) where.customerName = { contains: search, mode: 'insensitive' }
+      const invoices = await prisma.invoice.findMany({ where, orderBy: { createdAt: 'desc' }, take: limit, select: { invoiceNumber: true, customerName: true, status: true, totalCents: true, balanceDueCents: true, dueDate: true, paidAt: true } })
+      return invoices.map(i => ({ ...i, total: `$${(i.totalCents / 100).toFixed(2)}`, balance: `$${((i.balanceDueCents || 0) / 100).toFixed(2)}`, dueDate: i.dueDate ? new Date(i.dueDate).toLocaleDateString('en-AU') : null }))
+    },
+    get_jobs: async ({ status, upcoming, limit = 10 }) => {
+      const where = { businessId: business.id }
+      if (status) where.status = status
+      if (upcoming) where.scheduledAt = { gte: new Date() }
+      const jobs = await prisma.job.findMany({ where, orderBy: upcoming ? { scheduledAt: 'asc' } : { createdAt: 'desc' }, take: limit, select: { customerName: true, jobType: true, status: true, scheduledAt: true, address: true, suburb: true } })
+      return jobs.map(j => ({ ...j, scheduled: j.scheduledAt ? new Date(j.scheduledAt).toLocaleString('en-AU') : 'unscheduled' }))
+    },
+    get_customers: async ({ search, limit = 10 }) => {
+      const where = { businessId: business.id }
+      if (search) where.OR = [{ firstName: { contains: search, mode: 'insensitive' } }, { lastName: { contains: search, mode: 'insensitive' } }, { phone: { contains: search } }, { email: { contains: search, mode: 'insensitive' } }]
+      const customers = await prisma.customer.findMany({ where, orderBy: { lastJobAt: 'desc' }, take: limit, select: { firstName: true, lastName: true, phone: true, email: true, suburb: true, lastJobAt: true, _count: { select: { jobs: true, invoices: true } } } })
+      return customers.map(c => ({ name: `${c.firstName} ${c.lastName}`.trim(), phone: c.phone, email: c.email, suburb: c.suburb, jobs: c._count.jobs, invoices: c._count.invoices, lastJob: c.lastJobAt ? new Date(c.lastJobAt).toLocaleDateString('en-AU') : null }))
+    },
+    get_quotes: async ({ status, limit = 10 }) => {
+      const where = { businessId: business.id }
+      if (status) where.status = status
+      const quotes = await prisma.quote.findMany({ where, orderBy: { createdAt: 'desc' }, take: limit, select: { quoteNumber: true, customerName: true, status: true, totalCents: true, validUntil: true, createdAt: true } })
+      return quotes.map(q => ({ ...q, total: `$${(q.totalCents / 100).toFixed(2)}`, validUntil: new Date(q.validUntil).toLocaleDateString('en-AU') }))
+    }
+  }
 
-  return response.content.find(b => b.type === 'text')?.text || ''
+  return callClaudeWithTools(system, messages, INTERNAL_TOOLS, handlers, 4)
 }
 
 // ─── VOICE INVOICE PARSER ────────────────────────────────────────────────────
@@ -343,7 +441,7 @@ If hourly rate not specified, use the business default.
 Respond ONLY with valid JSON matching the schema exactly.`
 
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-6',
     max_tokens: 2048,
     system,
     messages: [{
@@ -385,7 +483,7 @@ async function callClaudeWithTools(system, messages, tools, handlers, maxDepth =
   if (maxDepth === 0) return 'I ran into an issue processing that. Please try again.'
 
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-5',
+    model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     system,
     tools,
