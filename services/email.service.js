@@ -111,6 +111,7 @@ function renderTemplate(template, data) {
           ${paymentLink ? `<div style="text-align:center;margin:32px 0"><a href="${paymentLink}" class="btn">Pay Online Now →</a><p style="margin-top:8px;font-size:13px;color:#9CA3AF">Secure payment powered by Stripe</p></div>` : ''}
           ${business.bankBsb ? `<div class="card"><div class="label">Bank Transfer</div><div style="margin-top:8px;font-size:14px;color:#374151"><strong>Bank:</strong> ${business.bankName || 'Bank transfer'}<br><strong>BSB:</strong> ${business.bankBsb}<br><strong>Account:</strong> ${business.bankAccount}<br><strong>Reference:</strong> ${invoice.invoiceNumber}</div></div>` : ''}
           ${invoice.notes ? `<p style="font-size:14px;color:#6B7280"><strong>Notes:</strong> ${invoice.notes}</p>` : ''}
+          ${business.invoiceFooter ? `<p style="font-size:14px;color:#6B7280;margin-top:12px">${business.invoiceFooter}</p>` : ''}
         </div>
         <div class="footer">
           <p>${business.name}${business.abn ? ' · ABN: ' + business.abn : ''}</p>
@@ -159,6 +160,65 @@ function renderTemplate(template, data) {
           <p class="body" style="font-size:13px;color:#9CA3AF">Questions? Call us on ${business.phone}</p>
         </div>
         <div class="footer">© ${business.name}</div></div></body></html>`
+      }
+    }
+
+    case 'quote': {
+      const { quote, business, viewUrl, acceptUrl, declineUrl, validUntil, isFollowUp, followUpNum } = data
+      const lineItemsHtml = (quote.lineItems || []).map(item => `
+        <tr>
+          <td>${item.description}</td>
+          <td class="td-right">${item.quantity % 1 === 0 ? item.quantity : item.quantity.toFixed(2)}</td>
+          <td class="td-right">$${(item.unitPriceCents / 100).toFixed(2)}</td>
+          <td class="td-right"><strong>$${(item.totalCents / 100).toFixed(2)}</strong></td>
+        </tr>`).join('')
+      const greeting = isFollowUp
+        ? `Hi ${quote.customerName.split(' ')[0]}, just following up on the quote we sent you${followUpNum > 1 ? ` (follow-up #${followUpNum})` : ''}. Would love to get started when you're ready!`
+        : `Hi ${quote.customerName.split(' ')[0]}, please find your quote from ${business.name} below.`
+      return {
+        html: `<!DOCTYPE html><html><head>${baseStyle}</head><body><div class="wrapper">
+        <div class="header">
+          <div class="header-logo">${business.name}</div>
+          <div class="header-sub">${business.abn ? 'ABN: ' + business.abn + ' · ' : ''}${business.phone}</div>
+        </div>
+        <div class="content">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
+            <div>
+              <div class="label">Quote</div>
+              <div style="font-size:22px;font-weight:800;color:#1A1A1A">${quote.quoteNumber}</div>
+            </div>
+            <div style="text-align:right">
+              <div class="label">Valid until</div>
+              <div style="font-size:16px;font-weight:700;color:#FF6B00">${validUntil}</div>
+            </div>
+          </div>
+          <p class="body">${greeting}</p>
+          <div class="card">
+            <div class="label">Prepared for</div>
+            <div class="value">${quote.customerName}</div>
+            ${quote.customerAddress ? `<div style="color:#6B7280;font-size:14px">${quote.customerAddress}</div>` : ''}
+          </div>
+          ${quote.jobDescription ? `<div class="card"><div class="label">Scope of work</div><div style="font-size:14px;color:#374151;margin-top:4px">${quote.jobDescription}</div></div>` : ''}
+          ${lineItemsHtml ? `<table>
+            <tr><th>Description</th><th class="td-right">Qty</th><th class="td-right">Unit</th><th class="td-right">Total</th></tr>
+            ${lineItemsHtml}
+            ${quote.gstCents > 0 ? `<tr><td colspan="3" class="td-right" style="color:#6B7280;padding-top:12px">Subtotal (ex GST)</td><td class="td-right" style="color:#6B7280">$${(quote.subtotalCents / 100).toFixed(2)}</td></tr>
+            <tr><td colspan="3" class="td-right" style="color:#6B7280">GST (10%)</td><td class="td-right" style="color:#6B7280">$${(quote.gstCents / 100).toFixed(2)}</td></tr>` : ''}
+            <tr class="total-row"><td colspan="3" class="td-right">TOTAL</td><td class="td-right" style="color:#FF6B00;font-size:18px">$${(quote.totalCents / 100).toFixed(2)}</td></tr>
+          </table>` : ''}
+          ${quote.notes ? `<p style="font-size:14px;color:#6B7280"><strong>Notes:</strong> ${quote.notes}</p>` : ''}
+          <div style="display:flex;gap:12px;margin:24px 0">
+            <a href="${acceptUrl}" style="flex:1;text-align:center;background:#00C48C;color:white;text-decoration:none;padding:14px;border-radius:8px;font-weight:700;display:block;font-size:15px">✓ Accept Quote</a>
+            <a href="${declineUrl}" style="flex:1;text-align:center;background:#F3F4F6;color:#374151;text-decoration:none;padding:14px;border-radius:8px;font-weight:700;display:block;font-size:15px">✗ Decline</a>
+          </div>
+          <div style="text-align:center;margin-bottom:16px"><a href="${viewUrl}" style="font-size:13px;color:#FF6B00">View full quote online →</a></div>
+          ${business.invoiceFooter ? `<p style="font-size:13px;color:#6B7280;text-align:center">${business.invoiceFooter}</p>` : ''}
+        </div>
+        <div class="footer">
+          <p>${business.name}${business.abn ? ' · ABN: ' + business.abn : ''}</p>
+          <p>Questions? Contact us at ${business.phone}${business.email ? ' or ' + business.email : ''}</p>
+          <p style="margin-top:8px;color:#D1D5DB">Powered by <a href="https://knockoff.com.au" style="color:#FF6B00">Knock Off</a></p>
+        </div></div></body></html>`
       }
     }
 

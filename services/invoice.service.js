@@ -161,7 +161,7 @@ async function generateInvoicePDF(invoice, business) {
     doc.rect(0, footerY - 10, doc.page.width, 70).fill(lightGrey)
     doc.fontSize(8).font('Helvetica').fillColor(grey)
       .text(`${business.name}${business.abn ? ' | ABN: ' + business.abn : ''} | ${business.phone} | ${business.email}`, leftCol, footerY, { width: pageWidth, align: 'center' })
-      .text('Thank you for your business. Payment is due by the date shown above.', leftCol, footerY + 14, { width: pageWidth, align: 'center' })
+      .text(business.invoiceFooter || 'Thank you for your business. Payment is due by the date shown above.', leftCol, footerY + 14, { width: pageWidth, align: 'center' })
       .fillColor(orange)
       .text('Powered by Knock Off', leftCol, footerY + 28, { width: pageWidth, align: 'center' })
 
