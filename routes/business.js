@@ -78,7 +78,8 @@ router.put('/', async (req, res) => {
     serviceRadius, serviceSuburbs, hourlyRate, emergencyRate, calloutFee,
     materialMarkup, invoicePrefix, paymentTermsDays, bankName, bankBsb, bankAccount,
     aiBusinessHours, aiAfterHours, aiGreeting, aiServiceAreas, aiTone, aiServices, invoiceFooter,
-    workingHoursStart, workingHoursEnd, workingDays, jobBufferMinutes, maxJobsPerDay
+    workingHoursStart, workingHoursEnd, workingDays, jobBufferMinutes, maxJobsPerDay,
+    gstRegistered
   } = req.body
 
   try {
@@ -115,6 +116,7 @@ router.put('/', async (req, res) => {
     if (workingDays !== undefined) updateData.workingDays = workingDays
     if (jobBufferMinutes !== undefined) updateData.jobBufferMinutes = parseInt(jobBufferMinutes)
     if (maxJobsPerDay !== undefined) updateData.maxJobsPerDay = parseInt(maxJobsPerDay)
+    if (gstRegistered !== undefined) updateData.gstRegistered = Boolean(gstRegistered)
 
     const business = await prisma.business.update({ where: { id: req.businessId }, data: updateData })
     res.json({ business })
