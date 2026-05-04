@@ -1,7 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const { PrismaClient } = require('@prisma/client')
-const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, addDays } = require('date-fns')
+const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, addDays, subMonths } = require('date-fns')
 
 const prisma = new PrismaClient()
 
@@ -17,6 +17,8 @@ router.get('/', async (req, res) => {
   const weekEnd = endOfWeek(today, { weekStartsOn: 1 })
   const monthStart = startOfMonth(today)
   const monthEnd = endOfMonth(today)
+  const lastMonthStart = startOfMonth(subMonths(today, 1))
+  const lastMonthEnd = endOfMonth(subMonths(today, 1))
 
   try {
     const tomorrowStart = startOfDay(addDays(today, 1))
@@ -32,6 +34,7 @@ router.get('/', async (req, res) => {
       recentConversations,
       unreadNotifications,
       recentPayments,
+      lastMonthPayments,
       recentActivity
     ] = await Promise.all([
       prisma.job.findMany({
@@ -73,6 +76,10 @@ router.get('/', async (req, res) => {
         orderBy: { paidAt: 'desc' },
         take: 20
       }),
+      prisma.invoice.findMany({
+        where: { businessId, status: 'PAID', paidAt: { gte: lastMonthStart, lte: lastMonthEnd } },
+        select: { paidAmountCents: true, totalCents: true }
+      }),
       // Activity feed: mix recent events across entity types
       Promise.all([
         prisma.invoice.findMany({
@@ -111,6 +118,7 @@ router.get('/', async (req, res) => {
       .reduce((sum, j) => sum + (j.totalCents || 0), 0)
 
     const monthRevenue = recentPayments.reduce((sum, inv) => sum + (inv.paidAmountCents || inv.totalCents || 0), 0)
+    const lastMonthRevenue = lastMonthPayments.reduce((sum, inv) => sum + (inv.paidAmountCents || inv.totalCents || 0), 0)
 
     const pendingTotal = pendingInvoices.reduce((sum, inv) => sum + (inv.balanceDueCents || 0), 0)
     const overdueTotal = overdueInvoices.reduce((sum, inv) => sum + (inv.balanceDueCents || 0), 0)
@@ -135,7 +143,8 @@ router.get('/', async (req, res) => {
         quotePipeline,
         pendingInvoicesCount: pendingInvoices.length,
         overdueInvoicesCount: overdueInvoices.length,
-        openQuotesCount: openQuotes.length
+        openQuotesCount: openQuotes.length,
+        lastMonthRevenue
       },
       pendingInvoices: pendingInvoices.slice(0, 5),
       overdueInvoices: overdueInvoices.slice(0, 5),
