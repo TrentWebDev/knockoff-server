@@ -122,7 +122,7 @@ function renderTemplate(template, data) {
     }
 
     case 'invoice-reminder': {
-      const { invoice, business, daysOverdue } = data
+      const { invoice, business, daysOverdue, viewUrl } = data
       return {
         html: `<!DOCTYPE html><html><head>${baseStyle}</head><body><div class="wrapper">
         <div class="header"><div class="header-logo">${business.name}</div></div>
@@ -133,7 +133,10 @@ function renderTemplate(template, data) {
             <div class="total-label">Amount Due</div>
             <div class="total-amount">$${(invoice.balanceDueCents / 100).toFixed(2)}</div>
           </div>
+          ${invoice.stripePaymentLinkUrl ? `<div style="text-align:center;margin:24px 0"><a href="${invoice.stripePaymentLinkUrl}" class="btn">Pay Now — $${(invoice.balanceDueCents / 100).toFixed(2)} →</a><p style="margin-top:8px;font-size:13px;color:#9CA3AF">Secure payment powered by Stripe</p></div>` : ''}
+          ${!invoice.stripePaymentLinkUrl && business.bankBsb ? `<div class="card"><div class="label">Pay by Bank Transfer</div><div style="margin-top:8px;font-size:14px;color:#374151"><strong>Bank:</strong> ${business.bankName || 'Bank transfer'}<br><strong>BSB:</strong> ${business.bankBsb}<br><strong>Account:</strong> ${business.bankAccount}<br><strong>Reference:</strong> ${invoice.invoiceNumber}</div></div>` : ''}
           <p class="body">Please arrange payment at your earliest convenience. If you've already paid, please disregard this message.</p>
+          ${viewUrl ? `<p style="text-align:center;margin:16px 0"><a href="${viewUrl}" style="color:#FF6B00;font-size:14px">View invoice online →</a></p>` : ''}
           <p class="body">Questions? Contact us at ${business.phone}.</p>
         </div>
         <div class="footer">© ${business.name}</div></div></body></html>`
@@ -218,6 +221,41 @@ function renderTemplate(template, data) {
           <p>${business.name}${business.abn ? ' · ABN: ' + business.abn : ''}</p>
           <p>Questions? Contact us at ${business.phone}${business.email ? ' or ' + business.email : ''}</p>
           <p style="margin-top:8px;color:#D1D5DB">Powered by <a href="https://knockoff.com.au" style="color:#FF6B00">Knock Off</a></p>
+        </div></div></body></html>`
+      }
+    }
+
+    case 'quote-followup': {
+      const { quote, business, message, followUpNumber } = data
+      const baseUrl = process.env.CLIENT_URL || process.env.SERVER_URL || 'https://knockoff-server-production.up.railway.app'
+      const viewUrl = `${baseUrl}/quote/${quote.id}`
+      const acceptUrl = `${baseUrl}/quote/${quote.id}/accept`
+      const declineUrl = `${baseUrl}/quote/${quote.id}/decline`
+      return {
+        html: `<!DOCTYPE html><html><head>${baseStyle}</head><body><div class="wrapper">
+        <div class="header">
+          <div class="header-logo">${business.name}</div>
+          <div class="header-sub">${business.phone}</div>
+        </div>
+        <div class="content">
+          <p class="body">${message}</p>
+          <div class="card">
+            <div style="display:flex;justify-content:space-between">
+              <div><div class="label">Quote</div><div style="font-size:20px;font-weight:800;color:#1A1A1A">${quote.quoteNumber}</div></div>
+              <div style="text-align:right"><div class="label">Total</div><div style="font-size:20px;font-weight:800;color:#FF6B00">$${(quote.totalCents / 100).toFixed(2)}</div></div>
+            </div>
+            ${quote.jobDescription ? `<div style="margin-top:12px;font-size:14px;color:#6B7280">${quote.jobDescription}</div>` : ''}
+          </div>
+          <div style="display:flex;gap:12px;margin:24px 0">
+            <a href="${acceptUrl}" style="flex:1;text-align:center;background:#00C48C;color:white;text-decoration:none;padding:14px;border-radius:8px;font-weight:700;display:block;font-size:15px">✓ Accept Quote</a>
+            <a href="${declineUrl}" style="flex:1;text-align:center;background:#F3F4F6;color:#374151;text-decoration:none;padding:14px;border-radius:8px;font-weight:700;display:block;font-size:15px">✗ Decline</a>
+          </div>
+          <div style="text-align:center;margin-bottom:16px"><a href="${viewUrl}" style="font-size:13px;color:#FF6B00">View full quote online →</a></div>
+          <p style="font-size:13px;color:#9CA3AF;text-align:center">Questions? Contact us at ${business.phone}</p>
+        </div>
+        <div class="footer">
+          <p>${business.name}${business.abn ? ' · ABN: ' + business.abn : ''}</p>
+          <p>Powered by <a href="https://knockoff.com.au" style="color:#FF6B00">Knock Off</a></p>
         </div></div></body></html>`
       }
     }

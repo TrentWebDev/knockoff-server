@@ -70,6 +70,7 @@ router.post('/bulk-remind', async (req, res) => {
     let sent = 0
     for (const invoice of overdueInvoices) {
       try {
+        const viewUrl = invoice.publicViewToken ? `${process.env.CLIENT_URL}/invoice/${invoice.publicViewToken}` : null
         if (invoice.customerEmail) {
           await sendEmail({
             to: invoice.customerEmail,
@@ -78,14 +79,16 @@ router.post('/bulk-remind', async (req, res) => {
             data: {
               invoice,
               business,
-              daysOverdue: Math.floor((Date.now() - new Date(invoice.dueDate).getTime()) / 86400000)
+              daysOverdue: Math.floor((Date.now() - new Date(invoice.dueDate).getTime()) / 86400000),
+              viewUrl
             }
           })
         }
         if (invoice.customerPhone) {
+          const payLink = invoice.stripePaymentLinkUrl || viewUrl || ''
           await sendSMS({
             to: invoice.customerPhone,
-            body: `Hi ${invoice.customerName.split(' ')[0]}, just a reminder that invoice ${invoice.invoiceNumber} for $${(invoice.balanceDueCents / 100).toFixed(2)} from ${business.name} is overdue. Please get in touch.`,
+            body: `Hi ${invoice.customerName.split(' ')[0]}, invoice ${invoice.invoiceNumber} for $${(invoice.balanceDueCents / 100).toFixed(2)} from ${business.name} is overdue.${payLink ? ' Pay now: ' + payLink : ' Please get in touch.'}`,
             from: business.twilioPhoneNumber
           })
         }
@@ -410,6 +413,7 @@ router.post('/:id/reminder', async (req, res) => {
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
 
     const business = req.user.business
+    const viewUrl = invoice.publicViewToken ? `${process.env.CLIENT_URL}/invoice/${invoice.publicViewToken}` : null
     if (invoice.customerEmail) {
       await sendEmail({
         to: invoice.customerEmail,
@@ -418,14 +422,16 @@ router.post('/:id/reminder', async (req, res) => {
         data: {
           invoice,
           business,
-          daysOverdue: invoice.status === 'OVERDUE' ? Math.floor((Date.now() - new Date(invoice.dueDate).getTime()) / 86400000) : 0
+          daysOverdue: invoice.status === 'OVERDUE' ? Math.floor((Date.now() - new Date(invoice.dueDate).getTime()) / 86400000) : 0,
+          viewUrl
         }
       })
     }
     if (invoice.customerPhone) {
+      const payLink = invoice.stripePaymentLinkUrl || viewUrl || ''
       await sendSMS({
         to: invoice.customerPhone,
-        body: `Hi ${invoice.customerName.split(' ')[0]}, just a reminder that invoice ${invoice.invoiceNumber} for $${(invoice.balanceDueCents / 100).toFixed(2)} from ${business.name} is due. Please get in touch if you have any questions.`,
+        body: `Hi ${invoice.customerName.split(' ')[0]}, invoice ${invoice.invoiceNumber} for $${(invoice.balanceDueCents / 100).toFixed(2)} from ${business.name} is due.${payLink ? ' View & pay: ' + payLink : ' Please get in touch if you have any questions.'}`,
         from: business.twilioPhoneNumber
       })
     }

@@ -82,11 +82,12 @@ async function sendInvoiceReminders() {
   for (const inv of dueSoon) {
     if (inv.customerEmail) {
       try {
+        const viewUrl3 = inv.publicViewToken ? `${process.env.CLIENT_URL}/invoice/${inv.publicViewToken}` : null
         await sendEmail({
           to: inv.customerEmail,
           subject: `Invoice ${inv.invoiceNumber} due in 3 days`,
           template: 'invoice-reminder',
-          data: { invoice: inv, business: inv.business, daysOverdue: 0 }
+          data: { invoice: inv, business: inv.business, daysOverdue: 0, viewUrl: viewUrl3 }
         })
         await prisma.invoice.update({ where: { id: inv.id }, data: { reminderSentAt: now } })
       } catch (e) {}
@@ -107,11 +108,12 @@ async function sendInvoiceReminders() {
     const daysOverdue = differenceInDays(now, new Date(inv.dueDate))
     if (inv.customerEmail) {
       try {
+        const viewUrlOverdue = inv.publicViewToken ? `${process.env.CLIENT_URL}/invoice/${inv.publicViewToken}` : null
         await sendEmail({
           to: inv.customerEmail,
           subject: `Overdue: Invoice ${inv.invoiceNumber} — ${inv.business.name}`,
           template: 'invoice-reminder',
-          data: { invoice: inv, business: inv.business, daysOverdue }
+          data: { invoice: inv, business: inv.business, daysOverdue, viewUrl: viewUrlOverdue }
         })
         await prisma.invoice.update({ where: { id: inv.id }, data: { overdueSentAt: now } })
       } catch (e) {}
