@@ -364,7 +364,7 @@ router.get('/:id/pdf', async (req, res) => {
 
 // POST /api/invoices/:id/mark-paid
 router.post('/:id/mark-paid', async (req, res) => {
-  const { paidAmountCents } = req.body
+  const { paidAmountCents, paymentMethod, paidAt } = req.body
   try {
     const invoice = await prisma.invoice.findFirst({
       where: { id: req.params.id, businessId: req.businessId }
@@ -375,8 +375,9 @@ router.post('/:id/mark-paid', async (req, res) => {
       where: { id: invoice.id },
       data: {
         status: 'PAID',
-        paidAt: new Date(),
-        paidAmountCents: paidAmountCents || invoice.balanceDueCents
+        paidAt: paidAt ? new Date(paidAt) : new Date(),
+        paidAmountCents: paidAmountCents || invoice.balanceDueCents,
+        paymentMethod: paymentMethod || null
       }
     })
 
