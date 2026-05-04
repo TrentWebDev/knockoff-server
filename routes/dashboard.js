@@ -1,7 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const { PrismaClient } = require('@prisma/client')
-const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays } = require('date-fns')
+const { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subDays, addDays } = require('date-fns')
 
 const prisma = new PrismaClient()
 
@@ -19,9 +19,13 @@ router.get('/', async (req, res) => {
   const monthEnd = endOfMonth(today)
 
   try {
+    const tomorrowStart = startOfDay(addDays(today, 1))
+    const sevenDaysEnd = endOfDay(addDays(today, 7))
+
     const [
       todayJobs,
       weekJobs,
+      upcomingJobs,
       pendingInvoices,
       overdueInvoices,
       openQuotes,
@@ -37,6 +41,11 @@ router.get('/', async (req, res) => {
       }),
       prisma.job.findMany({
         where: { businessId, scheduledAt: { gte: weekStart, lte: weekEnd }, status: { not: 'CANCELLED' } }
+      }),
+      prisma.job.findMany({
+        where: { businessId, scheduledAt: { gte: tomorrowStart, lte: sevenDaysEnd }, status: { notIn: ['CANCELLED', 'COMPLETED'] } },
+        orderBy: { scheduledAt: 'asc' },
+        take: 8
       }),
       prisma.invoice.findMany({
         where: { businessId, status: { in: ['SENT', 'VIEWED'] } },
@@ -131,6 +140,7 @@ router.get('/', async (req, res) => {
       pendingInvoices: pendingInvoices.slice(0, 5),
       overdueInvoices: overdueInvoices.slice(0, 5),
       openQuotes: openQuotes.slice(0, 5),
+      upcomingJobs,
       recentConversations: recentConversations.slice(0, 5),
       unreadNotifications,
       recentActivity

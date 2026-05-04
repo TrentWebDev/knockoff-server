@@ -271,4 +271,46 @@ router.post('/:id/convert', async (req, res) => {
   }
 })
 
+// POST /api/quotes/:id/schedule-job — create a job from a quote
+router.post('/:id/schedule-job', async (req, res) => {
+  try {
+    const quote = await prisma.quote.findFirst({
+      where: { id: req.params.id, businessId: req.businessId }
+    })
+    if (!quote) return res.status(404).json({ error: 'Quote not found' })
+
+    const { scheduledAt, durationMinutes = 120, notes: extraNotes } = req.body
+    const business = req.user.business
+
+    const [addressLine, suburb] = (quote.customerAddress || '').split(',').map(s => s.trim())
+
+    const job = await prisma.job.create({
+      data: {
+        businessId: req.businessId,
+        customerId: quote.customerId || undefined,
+        customerName: quote.customerName,
+        customerPhone: quote.customerPhone || business.phone,
+        customerEmail: quote.customerEmail,
+        address: addressLine || 'TBD',
+        suburb: suburb || 'TBD',
+        jobType: 'GENERAL',
+        description: quote.jobDescription,
+        notes: [quote.notes, extraNotes].filter(Boolean).join('\n') || null,
+        scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+        durationMinutes: parseInt(durationMinutes) || 120,
+        status: scheduledAt ? 'CONFIRMED' : 'PENDING'
+      }
+    })
+
+    if (quote.status === 'ACCEPTED') {
+      await prisma.quote.update({ where: { id: quote.id }, data: { status: 'ACCEPTED' } })
+    }
+
+    res.json({ job })
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to schedule job from quote' })
+  }
+})
+
 module.exports = router
