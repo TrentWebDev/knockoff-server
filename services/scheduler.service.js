@@ -31,7 +31,7 @@ async function runScheduledTasks() {
 async function checkOverdueInvoices() {
   const overdue = await prisma.invoice.findMany({
     where: {
-      status: 'SENT',
+      status: { in: ['SENT', 'VIEWED'] },
       dueDate: { lt: new Date() }
     }
   })
@@ -72,7 +72,7 @@ async function sendInvoiceReminders() {
   // 3-day-before reminder
   const dueSoon = await prisma.invoice.findMany({
     where: {
-      status: 'SENT',
+      status: { in: ['SENT', 'VIEWED'] },
       dueDate: { gte: now, lte: threeDaysFromNow },
       reminderSentAt: null
     },
