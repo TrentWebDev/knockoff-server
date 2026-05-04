@@ -289,7 +289,7 @@ router.post('/:id/schedule-job', async (req, res) => {
         businessId: req.businessId,
         customerId: quote.customerId || undefined,
         customerName: quote.customerName,
-        customerPhone: quote.customerPhone || business.phone,
+        customerPhone: quote.customerPhone || business.phone || '',
         customerEmail: quote.customerEmail,
         address: addressLine || 'TBD',
         suburb: suburb || 'TBD',
