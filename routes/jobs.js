@@ -174,6 +174,7 @@ router.post('/:id/send-confirmation', async (req, res) => {
     try { await sendJobConfirmationSMS(job, business); sent.sms = true } catch (e) {}
     try { await sendJobConfirmationEmail(job, business); sent.email = true } catch (e) {}
     if (!sent.sms && !sent.email) return res.status(500).json({ error: 'Failed to send — check SMS/email settings' })
+    await prisma.job.update({ where: { id: job.id }, data: { confirmationSentAt: new Date() } })
     res.json({ success: true, sent })
   } catch (err) {
     res.status(500).json({ error: 'Failed to send confirmation' })

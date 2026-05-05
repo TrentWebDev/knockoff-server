@@ -223,14 +223,15 @@ async function sendDailySummaries() {
 
 async function checkJobReminders() {
   const now = new Date()
-  const twoHoursFromNow = addDays(now, 0)
-  twoHoursFromNow.setHours(now.getHours() + 2)
+  // Use a 25-minute window centred on 2 hours from now so each job is only
+  // caught once by the hourly scheduler (100–125 minutes away)
+  const windowStart = new Date(now.getTime() + 100 * 60 * 1000)
+  const windowEnd   = new Date(now.getTime() + 125 * 60 * 1000)
 
-  // 2-hour-before reminder to customer
   const upcoming = await prisma.job.findMany({
     where: {
-      status: 'CONFIRMED',
-      scheduledAt: { gte: now, lte: twoHoursFromNow },
+      status: { in: ['PENDING', 'CONFIRMED'] },
+      scheduledAt: { gte: windowStart, lte: windowEnd },
       confirmationSentAt: { not: null }
     },
     include: { business: true }
@@ -241,10 +242,9 @@ async function checkJobReminders() {
       try {
         await sendSMS({
           to: job.customerPhone,
-          body: `Hi ${job.customerName.split(' ')[0]}, reminder: ${job.business.name} is coming for your ${job.jobType.replace(/_/g, ' ')} in about 2 hours (${format(new Date(job.scheduledAt), 'h:mma')}). See you then!`,
+          body: `Hi ${job.customerName.split(' ')[0]}, reminder: ${job.business.name} is coming for your ${job.jobType.replace(/_/g, ' ')} today at ${format(new Date(job.scheduledAt), 'h:mma')}. See you then!`,
           from: job.business.twilioPhoneNumber
         })
-        await prisma.job.update({ where: { id: job.id }, data: { status: 'IN_PROGRESS' } })
       } catch (e) {}
     }
   }

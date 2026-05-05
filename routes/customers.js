@@ -8,9 +8,23 @@ router.get('/', async (req, res) => {
   const { search, page = 1, limit = 20 } = req.query
   const where = { businessId: req.businessId }
   if (search) {
+    const parts = search.trim().split(/\s+/)
+    const nameConditions = parts.length >= 2
+      ? [
+          // "John Smith" → firstName contains "John" AND lastName contains "Smith"
+          { AND: [
+            { firstName: { contains: parts[0], mode: 'insensitive' } },
+            { lastName: { contains: parts.slice(1).join(' '), mode: 'insensitive' } }
+          ]},
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName: { contains: search, mode: 'insensitive' } }
+        ]
+      : [
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName: { contains: search, mode: 'insensitive' } }
+        ]
     where.OR = [
-      { firstName: { contains: search, mode: 'insensitive' } },
-      { lastName: { contains: search, mode: 'insensitive' } },
+      ...nameConditions,
       { phone: { contains: search } },
       { email: { contains: search, mode: 'insensitive' } }
     ]

@@ -131,7 +131,21 @@ router.put('/:id', async (req, res) => {
     const quote = await prisma.quote.findFirst({ where: { id: req.params.id, businessId: req.businessId } })
     if (!quote) return res.status(404).json({ error: 'Quote not found' })
     const { lineItems, ...data } = req.body
-    const updated = await prisma.quote.update({ where: { id: quote.id }, data, include: { lineItems: true } })
+
+    if (lineItems) {
+      await prisma.quoteLineItem.deleteMany({ where: { quoteId: quote.id } })
+      const subtotalCents = lineItems.reduce((sum, i) => sum + Math.round(i.quantity * i.unitPriceCents), 0)
+      const gstCents = req.user.business.gstRegistered ? Math.round(subtotalCents * 0.1) : 0
+      const totalCents = subtotalCents + gstCents
+      Object.assign(data, { subtotalCents, gstCents, totalCents,
+        lineItems: { create: lineItems.map((item, idx) => ({
+          description: item.description, quantity: item.quantity, unitPriceCents: item.unitPriceCents,
+          totalCents: Math.round(item.quantity * item.unitPriceCents), category: item.category || 'labor', sortOrder: idx
+        })) }
+      })
+    }
+
+    const updated = await prisma.quote.update({ where: { id: quote.id }, data, include: { lineItems: { orderBy: { sortOrder: 'asc' } } } })
     res.json({ quote: updated })
   } catch (err) { res.status(500).json({ error: 'Failed to update quote' }) }
 })

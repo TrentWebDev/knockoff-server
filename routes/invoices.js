@@ -374,12 +374,14 @@ router.post('/:id/mark-paid', async (req, res) => {
     })
     if (!invoice) return res.status(404).json({ error: 'Invoice not found' })
 
+    const paid = paidAmountCents || invoice.balanceDueCents
     const updated = await prisma.invoice.update({
       where: { id: invoice.id },
       data: {
         status: 'PAID',
         paidAt: paidAt ? new Date(paidAt) : new Date(),
-        paidAmountCents: paidAmountCents || invoice.balanceDueCents,
+        paidAmountCents: paid,
+        balanceDueCents: Math.max(0, invoice.totalCents - paid),
         paymentMethod: paymentMethod || null
       }
     })
